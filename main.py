@@ -1,4 +1,4 @@
-from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 from configparser import ConfigParser
 from urllib3 import exceptions
@@ -8,9 +8,6 @@ from multiprocessing import Queue, Process
 import serial
 import time
 import logging
-
-serialports = []
-processpool = []
 
 # Setup the logging feature
 logging.basicConfig(level=logging.DEBUG,
@@ -80,11 +77,13 @@ def databasewriteforever(queue, dbconfig, write_api):
 
 # Retrieve the serial sections from the .ini file and create the serialport instances
 def setupserial(conf):
+    serialports = []
     serialsectionnames = [s for s in conf.sections() if s.startswith('Serial')]
     for sname in serialsectionnames:
         serialconfig = conf[sname]
         serialports.append([serialconfig['Name'], serial.Serial(port=serialconfig['Port'],
                                                                 baudrate=serialconfig['Baud'])])
+    return serialports
 
 
 # Retrieve the database config and create the influxdb client
@@ -122,7 +121,7 @@ def main():
     config.read('config.ini')
 
     # Create the neccasary serial connections
-    setupserial(config)
+    serialports = setupserial(config)
 
     # Create the InfluxDB connection
     dbconfig = config['InfluxDB']
@@ -131,7 +130,10 @@ def main():
     # Create the Measurement Queue
     queue = Queue(maxsize=20)
 
-    # Check if SerialPorts is outputting data
+    # Create a collection pool of processes
+    processpool = []
+
+    # Check if all SerialPorts is outputting data
     if all([s[1].readline() for s in serialports]):
         # Check if the DBclient
         if dbclient:
