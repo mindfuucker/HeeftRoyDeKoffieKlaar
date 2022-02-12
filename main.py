@@ -60,7 +60,7 @@ def serialreadforever(queue, measurementname, serinstance):
         serialreadforever(queue, measurementname, serinstance)
     # Stop the process if the queue is full
     except Full:
-        exit(7)
+        exit(2)
 
 
 def databasewriteforever(queue, dbconfig, write_api):
@@ -109,7 +109,7 @@ def writemeasurement(dbconfig, dbclient, measurement):
     try:
         dbclient.write(dbconfig['Bucket'], dbconfig['Org'], point)
     except exceptions.NewConnectionError:
-        return False
+        exit(3)
     else:
         del measurement
         return True
@@ -155,8 +155,12 @@ def main():
             dbclient.close()
 
     # Check if the Queue was full when exiting
-    if any([p.exitcode == 7 for p in processpool]):
+    if any([p.exitcode == 2 for p in processpool]):
         logging.error('Measurement queue full')
+
+    # Check if the established Database connection was lost
+    if any([p.exitcode == 3 for p in processpool]):
+        logging.error('Established database connection lost')
 
     # The database was unreachable
     if dbclient is None:
