@@ -28,16 +28,19 @@ class Measurement:
         self.name = meas_name
 
     def validate(self):
-        retval = True
+        requirements = []
         # Serial connections can inject some false data
-        if not self.value.isdigit():
-            retval = False
+        requirements.append(all([c.isdigit for c in self.value]))
+        # String must contain data
+        requirements.append(self.value is not '')
 
-        # 12bit value, so 4095 max
-        intval = int(self.value)
-        if intval < 0 or intval > 4095:
-            retval = False
-        return retval
+        if all(requirements):
+            intval = int(self.value)
+            # Newlines may be lost in transmission and may exceed the maximum 12bit value
+            requirements.append(intval > 0)
+            requirements.append(intval < 4095)
+
+        return all(requirements)
 
     @staticmethod
     def sanitize(inputbytestring):
@@ -61,7 +64,7 @@ def serialreadforever(measurementname, serinstance):
                 measurement_queue.put_nowait(m)
     # The connection can be a bit flaky, Restart
     except serial.SerialException:
-        serialreadforever(serinstance, measurementname)
+        serialreadforever(measurementname, serinstance)
     # Stop the process if the queue is full
     except queue.Full:
         return
@@ -85,15 +88,17 @@ if __name__ == "__main__":
     print('Version 12')
     # Check if SerialPort is outputting data
     if serialports[0][1].readline():
+        # Assign a process to each serialport and run it
         for name, ser in serialports:
             process = multiprocessing.Process(target=serialreadforever, args=(name, ser))
             process.start()
             processpool.append(process)
 
-        # Keep waiting untill every process is killed
+        # Keep waiting untill a process is killed for whatever reason
         while all([p.is_alive() for p in processpool]):
             time.sleep(0.01)
+
+            # Consume the queue
             pass
 
-        print('Queue full')
         [p.terminate() for p in processpool]
