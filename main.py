@@ -1,21 +1,26 @@
+import queue
+
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
 from configparser import ConfigParser
-from datetime import datetime, timezone
+from datetime import datetime
+from queue import Queue
 import multiprocessing
 import serial
 import time
 import logging
 
-import threading
-import queue
-
 serialports = []
 processpool = []
+measurement_queue = Queue(maxsize=20)
 
 # Setup the logging feature
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-9s) %(message)s', )
 
 
+# Class to prepare the data for the InfluxDB database
+# Has some basic validation and sanitization features
 class Measurement:
     def __init__(self, meas_name, val):
         self.timestamp = self.createtimestamp()
@@ -25,11 +30,12 @@ class Measurement:
     def validate(self):
         retval = True
         # Serial connections can inject some false data
-        for char in self.value:
-            if not char.isdigit():
-                retval = False
+        if not self.value.isdigit():
+            retval = False
+
         # 12bit value, so 4095 max
-        if self.value < 0 or self.value > 4095:
+        intval = int(self.value)
+        if intval < 0 or intval > 4095:
             retval = False
         return retval
 
@@ -51,9 +57,14 @@ def serialreadforever(measurementname, serinstance):
             line = serinstance.readline()
             m = Measurement(measurementname, line)
             logging.debug(m.print())
+            if m.validate() and measurement_queue.not_full:
+                measurement_queue.put_nowait(m)
     # The connection can be a bit flaky, Restart
     except serial.SerialException:
         serialreadforever(serinstance, measurementname)
+    # Stop the process if the queue is full
+    except queue.Full:
+        return
 
 
 def setup():
@@ -61,6 +72,7 @@ def setup():
     config = ConfigParser()
     config.read('config.ini')
 
+    # Retrieve the serial sections from the .ini file and create the serialport instances
     serialsectionnames = [s for s in config.sections() if s.startswith('Serial')]
     for sname in serialsectionnames:
         serialconfig = config[sname]
@@ -70,7 +82,7 @@ def setup():
 
 if __name__ == "__main__":
     setup()
-    print('Version 10')
+    print('Version 12')
     # Check if SerialPort is outputting data
     if serialports[0][1].readline():
         for name, ser in serialports:
@@ -78,5 +90,10 @@ if __name__ == "__main__":
             process.start()
             processpool.append(process)
 
-        time.sleep(20)
+        # Keep waiting untill every process is killed
+        while all([p.is_alive() for p in processpool]):
+            time.sleep(0.01)
+            pass
+
+        print('Queue full')
         [p.terminate() for p in processpool]
