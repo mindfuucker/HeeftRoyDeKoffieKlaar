@@ -1,6 +1,5 @@
 # Create a Process for writing data to the database
 process = Process(target=evaluate_have, args=())
-processpool.append(process)
 
 # Start the proces
 process.start()
