@@ -1,5 +1,5 @@
 # Create a Process for writing data to the database
-process = Process(target=databasewriteforever, args=(queue, dbconfig, write_api))
+process = Process(target=evaluate_have, args=())
 processpool.append(process)
 
 # Start the proces
