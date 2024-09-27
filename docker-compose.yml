@@ -1,0 +1,10 @@
+version: '3'
+services:
+  influxdb:
+    image: influxdb:latest
+    volumes:
+      # Mount for influxdb data directory and configuration
+      - ./data:/var/lib/influxdb2:rw
+    ports:
+      - "8086:8086"
+  # Use the influx cli to set up an influxdb instance.
